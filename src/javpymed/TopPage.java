@@ -28,6 +28,8 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 import org.kordamp.ikonli.swing.FontIcon;
 import org.kordamp.ikonli.fontawesome5.FontAwesomeSolid;
 import com.formdev.flatlaf.FlatLightLaf;
+import com.formdev.flatlaf.themes.FlatMacLightLaf;
+import java.awt.Dimension;
 
 /**
  *
@@ -46,7 +48,7 @@ public class TopPage extends JFrame implements ActionListener{
     private JButton chooseButton;
     private JComboBox<String> deviceDropdown;
     private JComboBox<String> saveLocationDropdown;
-    private JButton convertButton;
+    static JButton convertButton;
     private JButton cancelButton;
     private JProgressBar progressBar;
     private JLabel statusLabel;
@@ -98,6 +100,25 @@ public class TopPage extends JFrame implements ActionListener{
     // =========================================================
     //                  PANELS
     // =========================================================
+    
+        private JPanel BuildHeaderPanel(){
+            JPanel panel = new JPanel(new BorderLayout());
+            JLabel title = new JLabel("  Video Converter");
+
+                    themeToggleButton = new JButton("  Dark Mode");
+                    themeToggleButton.setIcon( FontIcon.of(FontAwesomeSolid.MOON, 20));
+                    themeToggleButton.addActionListener(new ActionListener(){
+                                @Override
+                                public void actionPerformed(ActionEvent ae){
+                                    ToggleTheme();
+                                }
+                            });
+
+            panel.add(title, BorderLayout.WEST);
+            panel.add(themeToggleButton, BorderLayout.EAST);
+            return panel;
+        }
+
     private JPanel BuildUI(){
     JPanel panel = new JPanel();
     panel.setLayout(new BoxLayout(panel,BoxLayout.Y_AXIS));
@@ -138,7 +159,7 @@ public class TopPage extends JFrame implements ActionListener{
     panel.setBorder(BorderFactory.createEmptyBorder(10, 20, 10, 20));
 
             JLabel deviceLabel = new JLabel("Convert to:");
-            deviceDropdown = new JComboBox<>(new String[] {"iPod Video","iPod classic","Early Android Phone","High Resolution(1080p)","QVGA 320x240"});
+            deviceDropdown = new JComboBox<>(new String[] {"iPod Video","iPod Classic","Early Android Phone","High Resolution(1080p)","QVGA 320x240"});
 
                     JLabel saveLabel = new JLabel("Save to:");
                     saveLocationDropdown = new JComboBox<>(new String[] {"Same folder", "Choose folder..."});
@@ -152,28 +173,16 @@ public class TopPage extends JFrame implements ActionListener{
     return panel;
 }
     
-    private JPanel BuildHeaderPanel(){
-    JPanel panel = new JPanel(new BorderLayout());
-    JLabel title = new JLabel("  Video Converter");
-    
-            themeToggleButton = new JButton("  Dark Mode");
-            themeToggleButton.setIcon( FontIcon.of(FontAwesomeSolid.MOON, 20));
-            themeToggleButton.addActionListener(new ActionListener(){
-                        @Override
-                        public void actionPerformed(ActionEvent ae){
-                            ToggleTheme();
-                        }
-                    });
-            
-    panel.add(title, BorderLayout.WEST);
-    panel.add(themeToggleButton, BorderLayout.EAST);
-    return panel;
-}
-
 private JPanel BuildActionPanel(){
     JPanel panel = new JPanel();
     
     convertButton = new JButton("Convert");
+    convertButton.addActionListener(new ActionListener(){
+        @Override
+        public void actionPerformed(ActionEvent evt){
+            ConvertVideo();
+        }
+    });
     StyleButton(convertButton);
     
         cancelButton = new JButton("Cancel");
@@ -221,11 +230,11 @@ private JPanel BuildProgressPanel(){
     
     private void openFile(){
         JFileChooser jf = new JFileChooser();
-        jf.setFileFilter(new FileNameExtensionFilter("Video files", ALLOWED_EXTENSIONS));
-        int result = jf.showOpenDialog(this);
-        if (result == JFileChooser.APPROVE_OPTION) {
-            acceptFile(jf.getSelectedFile());
-        }
+            jf.setFileFilter(new FileNameExtensionFilter("Video files", ALLOWED_EXTENSIONS));
+                int result = jf.showOpenDialog(this);
+            if (result == JFileChooser.APPROVE_OPTION) {
+                acceptFile(jf.getSelectedFile());
+            }
     }
     
     
@@ -245,7 +254,7 @@ private JPanel BuildProgressPanel(){
         }
         
         if(!valid){
-            JOptionPane.showConfirmDialog(this, "Unsupported format", "ERROR", JOptionPane.OK_OPTION, JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showConfirmDialog(this, "Unsupported format", "ERROR", JOptionPane.CANCEL_OPTION, JOptionPane.ERROR_MESSAGE);
             return;
         }
         
@@ -265,10 +274,10 @@ private JPanel BuildProgressPanel(){
         darkMode = !darkMode;
             try {
                 if (darkMode) {
-                    com.formdev.flatlaf.FlatDarkLaf.setup();
+                    com.formdev.flatlaf.themes.FlatMacDarkLaf.setup();
                     themeToggleButton.setIcon(FontIcon.of(FontAwesomeSolid.SUN, 20));
                 } else {
-                    com.formdev.flatlaf.FlatLightLaf.setup();
+                    com.formdev.flatlaf.themes.FlatMacLightLaf.setup();
                     themeToggleButton.setIcon(FontIcon.of(FontAwesomeSolid.MOON, 20));
                 }
                 com.formdev.flatlaf.FlatLaf.updateUI();
@@ -297,9 +306,74 @@ private JPanel BuildProgressPanel(){
     public void setLblText(String Text){
         statusLabel.setText(Text);
     }
+    
+    // =========================================================
+    //                      CONNECTION WITH PYTHON CONVERTION LOGIC
+   // =========================================================
+    private static final String PYTHON_SCRIPT_PATH ="src/javpymed/python/convert.py";
+
+    // =========================================================
+    //                      JAVA CONVERSION HANDLER
+   // =========================================================
+    private void ConvertVideo(){
+        if(selectedFile == null){
+            JOptionPane.showMessageDialog(this, "Choose a file first.", "No file", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        String profileName = (String) deviceDropdown.getSelectedItem();
+
+        ProcessBuilder builder = new ProcessBuilder(
+            "python3", PYTHON_SCRIPT_PATH,
+            "--input", selectedFile.getAbsolutePath(),
+            "--profile", profileName);
+        
+        builder.redirectErrorStream(true); 
+
+        convertButton.setEnabled(false);
+        statusLabel.setText("Converting...");
+
+        new ConversionWorker(builder, this).execute();
+    }
+    
+    // =========================================================
+    //                  RESET UI AND BUTTON
+   // =========================================================
+    void resetUI(){
+        convertButton.setEnabled(true);
+        progressBar.setValue(0);
+        statusLabel.setText("Ready");
+    }
+
+    
+    // =========================================================
+    //                  PROGRESS BAR LIVE-UPDATING EVERY TIMESTAMP
+   // =========================================================
+    void handleLine(String line){
+        if(line.startsWith("PROGRESS:")){
+            int percent = Integer.parseInt(line.substring("PROGRESS:".length()).trim());
+            progressBar.setValue(percent);
+        } else if(line.startsWith("DONE:")){
+            int accept = JOptionPane.showConfirmDialog(TopPage.this,"Conversion complete","SUCCESS",JOptionPane.OK_CANCEL_OPTION,JOptionPane.INFORMATION_MESSAGE);
+                if(accept == JOptionPane.YES_NO_CANCEL_OPTION){
+                    return;
+                }
+                    progressBar.setValue(100);
+                        resetUI();
+        } else if(line.startsWith("ERROR:")){
+            statusLabel.setText("Error");
+            int error= JOptionPane.showConfirmDialog(this, line.substring("ERROR:".length()).trim(), "Conversion error", JOptionPane.ERROR_MESSAGE);
+            if(error == JOptionPane.YES_NO_CANCEL_OPTION){
+                    return;
+                }
+            resetUI();
+        }
+    }
+    
+     
 
     public static void main(String[] args) {
-        FlatLightLaf.setup();
+        FlatMacLightLaf.setup();
         new TopPage();
     }
     
